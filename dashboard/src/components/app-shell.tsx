@@ -35,7 +35,7 @@ export function AppShell() {
 
   return (
     <div className="flex min-h-svh bg-background text-foreground">
-      <aside className="flex w-56 shrink-0 flex-col border-r">
+      <aside className="sticky top-0 flex h-svh w-56 shrink-0 flex-col overflow-y-auto border-r">
         <div className="flex items-center gap-2.5 px-5 py-4">
           <BrandMark className="size-5 shrink-0 text-brand" />
           <span className="font-mono text-sm font-medium tracking-tight">
@@ -112,7 +112,7 @@ export function AppShell() {
         </div>
       </aside>
 
-      <main className="flex-1 overflow-auto">
+      <main className="min-w-0 flex-1">
         <div
           key={location.pathname}
           className={cn(
