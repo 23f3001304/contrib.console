@@ -12,6 +12,7 @@ import {
   type LucideIcon,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { BrandMark } from "@/components/brand-mark"
 import { useRateLimit, useWorkerStatus } from "@/lib/bus/hooks"
 
 const NAV: Array<{ to: string; label: string; icon: LucideIcon }> = [
@@ -35,8 +36,8 @@ export function AppShell() {
   return (
     <div className="flex min-h-svh bg-background text-foreground">
       <aside className="flex w-56 shrink-0 flex-col border-r">
-        <div className="flex items-center gap-2 px-5 py-4">
-          <span className="size-2 rounded-full bg-brand" />
+        <div className="flex items-center gap-2.5 px-5 py-4">
+          <BrandMark className="size-5 shrink-0 text-brand" />
           <span className="font-mono text-sm font-medium tracking-tight">
             contrib.console
           </span>
