@@ -1,4 +1,4 @@
-# Control Lib
+# contrib.console
 
 Local-first control panel for steering an AI through real open source
 contributions. It finds repos, makes one small commit at a time, and stops at
@@ -6,7 +6,7 @@ each for your review. Your token and the worker never leave your machine.
 
 ## What it does
 
-You set target languages and Control Lib suggests repos with good first issues.
+You set target languages and contrib.console suggests repos with good first issues.
 Approve the ones worth your time, queue an issue, and the worker makes one small
 commit toward it. Every commit lands in a review inbox with its diff and a
 per-file note. You approve or request changes, and the worker resumes on its
