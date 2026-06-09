@@ -1,0 +1,679 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <script>
+      document.documentElement.classList.add("js");
+    </script>
+    <title>Control Lib - local console for open source contributions</title>
+    <meta
+      name="description"
+      content="A local-first control panel for steering an AI through real open source contributions. You review every commit and open PRs yourself; your token and the worker never leave your machine."
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      :root {
+        --background: oklch(0.145 0 0);
+        --foreground: oklch(0.985 0 0);
+        --card: oklch(0.205 0 0);
+        --muted: oklch(0.269 0 0);
+        --muted-foreground: oklch(0.708 0 0);
+        --border: oklch(1 0 0 / 10%);
+        --brand: oklch(0.78 0.14 65);
+        --radius: 10px;
+        --sans: "IBM Plex Sans", system-ui, sans-serif;
+        --mono: "JetBrains Mono", ui-monospace, monospace;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html {
+        scroll-behavior: smooth;
+      }
+      body {
+        margin: 0;
+        font-family: var(--sans);
+        background: var(--background);
+        color: var(--foreground);
+        letter-spacing: -0.011em;
+        line-height: 1.6;
+        -webkit-font-smoothing: antialiased;
+        text-rendering: optimizeLegibility;
+      }
+      ::selection {
+        background: color-mix(in oklch, var(--brand) 35%, transparent);
+      }
+      a {
+        color: inherit;
+      }
+      .wrap {
+        max-width: 720px;
+        margin: 0 auto;
+        padding: 0 24px;
+      }
+      .label {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        font-family: var(--mono);
+        font-size: 11px;
+        text-transform: uppercase;
+        letter-spacing: 0.12em;
+        color: var(--muted-foreground);
+      }
+      .label .dot {
+        width: 6px;
+        height: 6px;
+        border-radius: 50%;
+        background: var(--brand);
+      }
+      h1 {
+        font-size: clamp(32px, 5.4vw, 46px);
+        font-weight: 600;
+        letter-spacing: -0.03em;
+        line-height: 1.05;
+        margin: 18px 0 0;
+        max-width: 18ch;
+        text-wrap: balance;
+      }
+      h2 {
+        font-size: clamp(21px, 3vw, 26px);
+        font-weight: 600;
+        letter-spacing: -0.02em;
+        margin: 14px 0 0;
+        text-wrap: balance;
+      }
+      p {
+        color: var(--muted-foreground);
+        font-size: 16px;
+        max-width: 60ch;
+      }
+      .sub {
+        font-size: 18px;
+        margin-top: 18px;
+      }
+
+      /* scroll-driven reveal (only when JS is on, no flash) */
+      .js .reveal {
+        opacity: 0;
+        transform: translateY(12px);
+        transition:
+          opacity 0.55s cubic-bezier(0.2, 0.6, 0.2, 1),
+          transform 0.55s cubic-bezier(0.2, 0.6, 0.2, 1);
+        will-change: opacity, transform;
+      }
+      .js .reveal.in {
+        opacity: 1;
+        transform: none;
+      }
+      .hero .reveal:nth-child(1) {
+        transition-delay: 0s;
+      }
+      .hero .reveal:nth-child(2) {
+        transition-delay: 0.06s;
+      }
+      .hero .reveal:nth-child(3) {
+        transition-delay: 0.12s;
+      }
+      .hero .reveal:nth-child(4) {
+        transition-delay: 0.18s;
+      }
+
+      /* progressive blur pinned to the bottom */
+      .fade {
+        position: fixed;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        height: 130px;
+        z-index: 30;
+        pointer-events: none;
+        backdrop-filter: blur(8px);
+        -webkit-backdrop-filter: blur(8px);
+        -webkit-mask-image: linear-gradient(
+          to top,
+          #000 0%,
+          #000 24%,
+          transparent 100%
+        );
+        mask-image: linear-gradient(to top, #000 0%, #000 24%, transparent 100%);
+        background: linear-gradient(
+          to top,
+          color-mix(in oklch, var(--background) 78%, transparent),
+          transparent 68%
+        );
+        transition: opacity 300ms ease;
+      }
+      .fade.hidden {
+        opacity: 0;
+      }
+
+      /* top bar */
+      header {
+        border-bottom: 1px solid var(--border);
+        position: sticky;
+        top: 0;
+        background: color-mix(in oklch, var(--background) 86%, transparent);
+        backdrop-filter: blur(8px);
+        z-index: 40;
+      }
+      header .wrap {
+        max-width: 880px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        height: 56px;
+      }
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        font-weight: 500;
+        font-size: 14px;
+        letter-spacing: -0.01em;
+      }
+      .brand .dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        background: var(--brand);
+      }
+      header nav {
+        display: flex;
+        gap: 22px;
+        font-family: var(--mono);
+        font-size: 12px;
+      }
+      header nav a {
+        color: var(--muted-foreground);
+        text-decoration: none;
+        transition: color 120ms ease;
+      }
+      header nav a:hover {
+        color: var(--foreground);
+      }
+
+      /* buttons */
+      .actions {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        margin-top: 30px;
+      }
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 14px;
+        font-weight: 500;
+        padding: 9px 16px;
+        border-radius: var(--radius);
+        text-decoration: none;
+        border: 1px solid transparent;
+        transition:
+          transform 120ms ease,
+          background 120ms ease,
+          border-color 120ms ease;
+      }
+      .btn--primary {
+        background: var(--foreground);
+        color: var(--background);
+      }
+      .btn--primary:hover {
+        transform: translateY(-1px);
+      }
+      .btn--ghost {
+        border-color: var(--border);
+        color: var(--foreground);
+      }
+      .btn--ghost:hover {
+        background: var(--muted);
+      }
+
+      /* sections */
+      .hero {
+        padding: 92px 0 76px;
+      }
+      section {
+        padding: 64px 0;
+        border-top: 1px solid var(--border);
+      }
+      .head p {
+        margin-top: 12px;
+      }
+
+      .rows {
+        margin-top: 26px;
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        overflow: hidden;
+      }
+      .rows .row {
+        display: grid;
+        grid-template-columns: 168px 1fr;
+        border-top: 1px solid var(--border);
+      }
+      .rows .row:first-child {
+        border-top: 0;
+      }
+      .rows .k {
+        font-family: var(--mono);
+        font-size: 12px;
+        color: var(--muted-foreground);
+        padding: 13px 16px;
+        border-right: 1px solid var(--border);
+      }
+      .rows .v {
+        padding: 13px 16px;
+        font-size: 15px;
+      }
+      .rows .v b {
+        font-variant-numeric: tabular-nums;
+        font-weight: 600;
+      }
+
+      .points {
+        margin-top: 26px;
+        display: flex;
+        flex-direction: column;
+      }
+      .point {
+        padding: 20px 0;
+        border-top: 1px solid var(--border);
+        display: grid;
+        grid-template-columns: 168px 1fr;
+        gap: 18px;
+      }
+      .point:first-child {
+        border-top: 0;
+      }
+      .point .tag {
+        font-family: var(--mono);
+        font-size: 12px;
+        color: var(--brand);
+        letter-spacing: 0.02em;
+        padding-top: 2px;
+      }
+      .point h3 {
+        margin: 0 0 6px;
+        font-size: 16px;
+        font-weight: 600;
+        letter-spacing: -0.01em;
+      }
+      .point p {
+        margin: 0;
+        font-size: 15px;
+      }
+      .point .mono {
+        font-family: var(--mono);
+        font-size: 0.92em;
+        color: var(--foreground);
+      }
+
+      .steps {
+        margin-top: 26px;
+        counter-reset: s;
+      }
+      .stp {
+        display: grid;
+        grid-template-columns: 44px 1fr;
+        gap: 18px;
+        padding: 18px 0;
+        border-top: 1px solid var(--border);
+      }
+      .stp:first-child {
+        border-top: 0;
+      }
+      .stp .n {
+        counter-increment: s;
+        font-family: var(--mono);
+        font-size: 13px;
+        color: var(--muted-foreground);
+      }
+      .stp .n::before {
+        content: counter(s, decimal-leading-zero);
+      }
+      .stp h3 {
+        margin: 0 0 5px;
+        font-size: 16px;
+        font-weight: 600;
+        letter-spacing: -0.01em;
+      }
+      .stp p {
+        margin: 0;
+        font-size: 15px;
+      }
+
+      pre {
+        margin: 26px 0 0;
+        border: 1px solid var(--border);
+        border-radius: var(--radius);
+        background: oklch(0.12 0 0);
+        padding: 18px 20px;
+        overflow-x: auto;
+        font-family: var(--mono);
+        font-size: 13px;
+        line-height: 1.85;
+        color: var(--foreground);
+      }
+      pre .c {
+        color: var(--muted-foreground);
+      }
+      pre .a {
+        color: var(--brand);
+      }
+      .note {
+        margin-top: 18px;
+        font-size: 15px;
+      }
+      .note code {
+        font-family: var(--mono);
+        font-size: 0.9em;
+        color: var(--foreground);
+        background: var(--muted);
+        padding: 1px 6px;
+        border-radius: 5px;
+      }
+
+      footer {
+        border-top: 1px solid var(--border);
+        padding: 28px 0 48px;
+      }
+      footer .wrap {
+        max-width: 880px;
+        display: flex;
+        justify-content: space-between;
+        gap: 16px;
+        flex-wrap: wrap;
+        font-family: var(--mono);
+        font-size: 12px;
+        color: var(--muted-foreground);
+      }
+      footer a {
+        color: var(--muted-foreground);
+        text-decoration: none;
+      }
+      footer a:hover {
+        color: var(--foreground);
+      }
+
+      @media (max-width: 620px) {
+        .rows .row,
+        .point {
+          grid-template-columns: 1fr;
+        }
+        .rows .k {
+          border-right: 0;
+          border-bottom: 1px solid var(--border);
+        }
+        .point .tag {
+          padding-top: 0;
+        }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .js .reveal {
+          opacity: 1;
+          transform: none;
+          transition: none;
+        }
+        html {
+          scroll-behavior: auto;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <div class="wrap">
+        <span class="brand"><span class="dot"></span>Control Lib</span>
+        <nav>
+          <a href="#gist">Overview</a>
+          <a href="#local">Why local</a>
+          <a href="#setup">Setup</a>
+          <a href="https://github.com/23f3001304/Control-Lib">GitHub</a>
+        </nav>
+      </div>
+    </header>
+
+    <main>
+      <div class="hero wrap">
+        <span class="label reveal"
+          ><span class="dot"></span>local-first contribution console</span
+        >
+        <h1 class="reveal">Stay in the loop on every commit.</h1>
+        <p class="sub reveal">
+          Control Lib is a local console for steering an AI through real open
+          source contributions. It finds repos, makes one small commit at a
+          time, and stops at each for your review. Your token and the worker
+          never leave your machine.
+        </p>
+        <div class="actions reveal">
+          <a class="btn btn--primary" href="https://github.com/23f3001304/Control-Lib"
+            >View on GitHub</a
+          >
+          <a class="btn btn--ghost" href="#setup">Read the setup</a>
+        </div>
+      </div>
+
+      <section id="gist">
+        <div class="wrap">
+          <div class="head reveal">
+            <span class="label">the gist</span>
+            <h2>A small, reviewed change. Then it stops.</h2>
+            <p>
+              The worker is built to be boring on purpose. Each run does one tiny
+              unit of work and hands it back to you. No batching, no surprise
+              pushes, no AI signature on the commit.
+            </p>
+          </div>
+          <div class="rows reveal">
+            <div class="row">
+              <div class="k">commit size</div>
+              <div class="v"><b>50</b> changed lines and <b>2</b> files, at most</div>
+            </div>
+            <div class="row">
+              <div class="k">review</div>
+              <div class="v">every commit, before the next one</div>
+            </div>
+            <div class="row">
+              <div class="k">push &amp; PR</div>
+              <div class="v">manual, opened by you, as you</div>
+            </div>
+            <div class="row">
+              <div class="k">author</div>
+              <div class="v">your git identity, no co-author</div>
+            </div>
+            <div class="row">
+              <div class="k">worker</div>
+              <div class="v">Claude Code in an embedded terminal</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="local">
+        <div class="wrap">
+          <div class="head reveal">
+            <span class="label">why local</span>
+            <h2>Why it runs on your machine.</h2>
+            <p>
+              Contribution tools that hold your token and push for you ask for a
+              lot of trust. Control Lib keeps the blast radius inside one folder
+              you can see.
+            </p>
+          </div>
+          <div class="points">
+            <div class="point reveal">
+              <div class="tag">token</div>
+              <div>
+                <h3>It stays on disk.</h3>
+                <p>
+                  Your token lives in
+                  <span class="mono">dashboard/.env.local</span>, read only by
+                  the dev server. It never reaches the browser or any third
+                  party. The repo ships an
+                  <span class="mono">.env.example</span>, never the real value.
+                </p>
+              </div>
+            </div>
+            <div class="point reveal">
+              <div class="tag">worker</div>
+              <div>
+                <h3>It runs on your hardware.</h3>
+                <p>
+                  Claude Code runs in a terminal on your machine as its own
+                  process. The dashboard talks to it through plain JSON files in
+                  <span class="mono">pipeline/</span>, not a remote queue.
+                </p>
+              </div>
+            </div>
+            <div class="point reveal">
+              <div class="tag">git</div>
+              <div>
+                <h3>Nothing leaves until you push it.</h3>
+                <p>
+                  Commits stay local and the worker is blocked from any network
+                  git call. You read each diff, approve it, and only then does
+                  the dashboard push and open the PR with your description.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="flow">
+        <div class="wrap">
+          <div class="head reveal">
+            <span class="label">the loop</span>
+            <h2>Five steps, one of them is you.</h2>
+          </div>
+          <div class="steps">
+            <div class="stp reveal">
+              <div class="n"></div>
+              <div>
+                <h3>Pick languages, approve repos.</h3>
+                <p>
+                  Set your target tech and get repo suggestions with good first
+                  issues. Approve the ones worth your time.
+                </p>
+              </div>
+            </div>
+            <div class="stp reveal">
+              <div class="n"></div>
+              <div>
+                <h3>Queue an issue.</h3>
+                <p>
+                  Filter open issues by label, unassigned, and no linked PR. Send
+                  one to the worker.
+                </p>
+              </div>
+            </div>
+            <div class="stp reveal">
+              <div class="n"></div>
+              <div>
+                <h3>The worker learns the repo.</h3>
+                <p>
+                  It clones the repo, builds an architecture map and a
+                  contribution profile, then makes one small commit toward the
+                  issue.
+                </p>
+              </div>
+            </div>
+            <div class="stp reveal">
+              <div class="n"></div>
+              <div>
+                <h3>Read the diff, approve or push back.</h3>
+                <p>
+                  Each commit lands with a per-file explanation and an open-in-VS
+                  Code link. Request changes and the worker resumes on its own.
+                </p>
+              </div>
+            </div>
+            <div class="stp reveal">
+              <div class="n"></div>
+              <div>
+                <h3>You open the PR.</h3>
+                <p>
+                  Write the description yourself. The dashboard pushes the
+                  branch, forking if needed, and opens the PR as you.
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="setup">
+        <div class="wrap">
+          <div class="head reveal">
+            <span class="label">first run</span>
+            <h2>Clone it, add a token, run it.</h2>
+            <p>
+              A Vite app plus a worker host. The only secret you supply is a
+              GitHub token, kept in a local file the build reads server-side.
+            </p>
+          </div>
+          <pre class="reveal"><span class="c"># clone and install</span>
+git clone https://github.com/23f3001304/Control-Lib.git
+cd Control-Lib/<span class="a">dashboard</span>
+npm install
+
+<span class="c"># your token, kept local</span>
+echo "GITHUB_TOKEN=ghp_your_token" &gt; .env.local
+
+<span class="c"># start the console</span>
+npm run dev</pre>
+          <p class="note reveal">
+            Then open <code>localhost:5173</code>, go to the Terminal tab, and
+            run <code>claude</code>. Set a schedule in Settings if you want it to
+            start itself.
+          </p>
+        </div>
+      </section>
+    </main>
+
+    <footer>
+      <div class="wrap">
+        <span>Built by Hemang Choudhary</span>
+        <a href="https://github.com/23f3001304/Control-Lib"
+          >github.com/23f3001304/Control-Lib</a
+        >
+      </div>
+    </footer>
+
+    <div class="fade" id="fade" aria-hidden="true"></div>
+
+    <script>
+      const io = new IntersectionObserver(
+        (entries) => {
+          for (const e of entries) {
+            if (e.isIntersecting) {
+              e.target.classList.add("in");
+              io.unobserve(e.target);
+            }
+          }
+        },
+        { threshold: 0.15, rootMargin: "0px 0px -8% 0px" },
+      );
+      document.querySelectorAll(".reveal").forEach((el) => io.observe(el));
+
+      const fade = document.getElementById("fade");
+      const onScroll = () => {
+        const atBottom =
+          window.innerHeight + window.scrollY >=
+          document.documentElement.scrollHeight - 2;
+        fade.classList.toggle("hidden", atBottom);
+      };
+      window.addEventListener("scroll", onScroll, { passive: true });
+      window.addEventListener("resize", onScroll);
+      onScroll();
+    </script>
+  </body>
+</html>
