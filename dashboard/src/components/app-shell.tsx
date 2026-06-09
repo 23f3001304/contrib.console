@@ -116,8 +116,10 @@ export function AppShell() {
         <div
           key={location.pathname}
           className={cn(
-            "px-8 py-10 duration-300 animate-in fade-in-0 slide-in-from-bottom-1",
-            location.pathname === "/terminal" ? "" : "mx-auto max-w-4xl",
+            "duration-300 animate-in fade-in-0 slide-in-from-bottom-1",
+            location.pathname === "/terminal"
+              ? "px-8 py-10"
+              : "mx-auto max-w-4xl px-8 pb-12 pt-14",
           )}
         >
           <Outlet />

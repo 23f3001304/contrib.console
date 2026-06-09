@@ -43,8 +43,8 @@ it as you.
 ## Setup
 
 ```bash
-git clone https://github.com/23f3001304/Control-Lib.git
-cd Control-Lib/dashboard
+git clone https://github.com/23f3001304/contrib.console.git
+cd contrib.console/dashboard
 npm install
 echo "GITHUB_TOKEN=ghp_your_token" > .env.local
 npm run dev
