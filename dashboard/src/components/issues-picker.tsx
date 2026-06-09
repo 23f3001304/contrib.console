@@ -18,7 +18,7 @@ import type { IssueFilters, IssueSort, RankedIssue, RepoRef } from "@/lib/bus/ty
 const DEFAULT_FILTERS: IssueFilters = {
   labels: [],
   unassigned: true,
-  noOpenPr: true,
+  noOpenPr: false,
   sort: "updated",
 }
 
@@ -118,6 +118,7 @@ export function IssuesPicker({ owner, name }: { owner: string; name: string }) {
           </Toggle>
           <Toggle
             active={draft.noOpenPr}
+            title="Uses the GitHub search API, limited to 30 requests per minute"
             onClick={() =>
               setDraft((filters) => ({ ...filters, noOpenPr: !filters.noOpenPr }))
             }
@@ -212,15 +213,18 @@ function Toggle({
   active,
   onClick,
   children,
+  title,
 }: {
   active: boolean
   onClick: () => void
   children: ReactNode
+  title?: string
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
+      title={title}
       className={cn(
         "rounded-full border px-3 py-1 font-mono text-xs transition-colors",
         active

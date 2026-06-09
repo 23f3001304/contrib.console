@@ -164,27 +164,70 @@ export class GitHubClient {
     return [...seen.values()].sort((a, b) => b.stars - a.stars)
   }
 
-  // Rank open issues for a repo using caller-supplied filters.
+  // Rank open issues for a repo. Defaults to the REST issues endpoint, which is
+  // on the generous core rate limit (5000/hr). Only the "no open PR" filter falls
+  // back to the Search API, since its -linked:pr qualifier is search-only and that
+  // endpoint is capped at 30/min.
   async rankIssues(
     owner: string,
     name: string,
     filters: IssueFilters,
   ): Promise<RankedIssue[]> {
-    const parts = [`repo:${owner}/${name}`, "is:issue", "is:open"]
-    if (filters.noOpenPr) parts.push("-linked:pr")
+    const items = filters.noOpenPr
+      ? await this.searchOpenIssues(owner, name, filters)
+      : await this.listOpenIssues(owner, name, filters)
+    return items
+      .filter((item) => !item.pull_request)
+      .map(toRankedIssue)
+      .sort((a, b) => b.score - a.score)
+  }
+
+  private async listOpenIssues(
+    owner: string,
+    name: string,
+    filters: IssueFilters,
+  ): Promise<SearchIssuesItem[]> {
+    // The REST list mixes issues and PRs, so on PR-heavy repos one page can be
+    // almost all PRs. Page through (still on the core budget) until we have a
+    // useful number of real issues.
+    const base: Record<string, string | number> = {
+      state: "open",
+      sort: filters.sort,
+      direction: "desc",
+      per_page: 100,
+    }
+    if (filters.labels.length > 0) base.labels = filters.labels.join(",")
+    if (filters.unassigned) base.assignee = "none"
+    const issues: SearchIssuesItem[] = []
+    for (let page = 1; page <= 3 && issues.length < 30; page++) {
+      const batch = await this.get<SearchIssuesItem[]>(
+        `/repos/${owner}/${name}/issues`,
+        { ...base, page },
+      )
+      for (const item of batch) if (!item.pull_request) issues.push(item)
+      if (batch.length < 100) break
+    }
+    return issues
+  }
+
+  private async searchOpenIssues(
+    owner: string,
+    name: string,
+    filters: IssueFilters,
+  ): Promise<SearchIssuesItem[]> {
+    const parts = [`repo:${owner}/${name}`, "is:issue", "is:open", "-linked:pr"]
     if (filters.unassigned) parts.push("no:assignee")
     if (filters.labels.length > 0) {
       const labelQuery = filters.labels.map((label) => `"${label}"`).join(",")
       parts.push(`label:${labelQuery}`)
     }
-    const data = await this.get<{ items: SearchIssuesItem[] }>(
-      "/search/issues",
-      { q: parts.join(" "), sort: filters.sort, order: "desc", per_page: 30 },
-    )
+    const data = await this.get<{ items: SearchIssuesItem[] }>("/search/issues", {
+      q: parts.join(" "),
+      sort: filters.sort,
+      order: "desc",
+      per_page: 30,
+    })
     return data.items
-      .filter((item) => !item.pull_request)
-      .map(toRankedIssue)
-      .sort((a, b) => b.score - a.score)
   }
 
   // Lightweight repo lookup, used to validate a manual add.
