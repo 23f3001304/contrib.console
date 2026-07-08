@@ -1,8 +1,9 @@
 import { createRequire } from "node:module"
-import { writeFileSync, readFileSync } from "node:fs"
-import { execSync } from "node:child_process"
+import { writeFileSync, readFileSync, promises as fsPromises } from "node:fs"
+import { execSync, exec } from "node:child_process"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
+import util from "node:util"
 import { startScheduler } from "./worker-schedule.mjs"
 
 const stripAnsi = (s) =>
@@ -221,3 +222,69 @@ wss.on("connection", (ws) => {
   })
   ws.on("close", () => clients.delete(ws))
 })
+
+const execAsync = util.promisify(exec)
+const statsPath = path.join(root, "pipeline", "usage-stats.json")
+const historyPath = path.join(root, "pipeline", "usage-history.json")
+
+async function scrapeUsageStats() {
+  try {
+    await fsPromises.mkdir(path.join(root, "pipeline"), { recursive: true })
+    const { stdout } = await execAsync('claude -p "/usage"', {
+      timeout: 20000,
+      env: { ...process.env }
+    })
+    
+    const sessionMatch = /Current session:\s*(\d+)%\s*used/i.exec(stdout)
+    const weeklyMatch = /Current week \(all models\):\s*(\d+)%\s*used\s*·\s*resets\s*([^\n]+)/i.exec(stdout)
+    const last24hMatch = /Last 24h\s*·\s*(\d+)\s*requests\s*·\s*(\d+)\s*session/i.exec(stdout)
+    const last7dMatch = /Last 7d\s*·\s*(\d+)\s*requests\s*·\s*(\d+)\s*session/i.exec(stdout)
+    
+    const stats = {
+      sessionUsedPercent: sessionMatch ? parseInt(sessionMatch[1], 10) : 0,
+      weeklyUsedPercent: weeklyMatch ? parseInt(weeklyMatch[1], 10) : 0,
+      weeklyResets: weeklyMatch ? weeklyMatch[2].trim() : "",
+      last24hRequests: last24hMatch ? parseInt(last24hMatch[1], 10) : 0,
+      last24hSessions: last24hMatch ? parseInt(last24hMatch[2], 10) : 0,
+      last7dRequests: last7dMatch ? parseInt(last7dMatch[1], 10) : 0,
+      last7dSessions: last7dMatch ? parseInt(last7dMatch[2], 10) : 0,
+      lastUpdated: new Date().toISOString()
+    }
+    
+    await fsPromises.writeFile(statsPath, JSON.stringify(stats, null, 2), "utf8")
+    
+    let history = []
+    try {
+      const rawHistory = await fsPromises.readFile(historyPath, "utf8")
+      history = JSON.parse(rawHistory)
+    } catch {
+      history = []
+    }
+    
+    const lastEntry = history[history.length - 1]
+    const minute = new Date().getMinutes()
+    
+    if (
+      !lastEntry ||
+      new Date(lastEntry.timestamp).getMinutes() !== minute ||
+      lastEntry.last24hRequests !== stats.last24hRequests
+    ) {
+      history.push({
+        timestamp: stats.lastUpdated,
+        last24hRequests: stats.last24hRequests,
+        last7dRequests: stats.last7dRequests,
+        sessionUsedPercent: stats.sessionUsedPercent,
+        weeklyUsedPercent: stats.weeklyUsedPercent
+      })
+      if (history.length > 100) {
+        history.shift()
+      }
+      await fsPromises.writeFile(historyPath, JSON.stringify(history, null, 2), "utf8")
+    }
+  } catch (err) {
+    // Ignore execution errors when CLI might not be authenticated yet
+  }
+}
+
+scrapeUsageStats()
+setInterval(scrapeUsageStats, 5 * 60 * 1000)

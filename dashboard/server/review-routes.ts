@@ -112,5 +112,16 @@ export async function handleReviewRoutes(ctx: RouteContext): Promise<boolean> {
     return true
   }
 
+  if (route === "/usage-stats" && method === "GET") {
+    const stats = await pipeline.readJson<any>("usage-stats.json", null)
+    sendJson(res, 200, stats)
+    return true
+  }
+  if (route === "/usage-history" && method === "GET") {
+    const history = await pipeline.readJson<any[]>("usage-history.json", [])
+    sendJson(res, 200, history)
+    return true
+  }
+
   return false
 }

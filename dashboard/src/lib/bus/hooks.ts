@@ -25,6 +25,8 @@ import {
   putSchedule,
   runScheduleNow,
   getPulls,
+  getUsageStats,
+  getUsageHistory,
   getPullComments,
   openPullRequest,
   sendCommentToWorker,
@@ -275,5 +277,21 @@ export function useRequestRepoMap() {
     onSuccess: (_saved, vars) => {
       qc.invalidateQueries({ queryKey: ["repo-map", vars.owner, vars.name] })
     },
+  })
+}
+
+export function useUsageStats() {
+  return useQuery({
+    queryKey: ["usage-stats"],
+    queryFn: getUsageStats,
+    refetchInterval: 30000,
+  })
+}
+
+export function useUsageHistory() {
+  return useQuery({
+    queryKey: ["usage-history"],
+    queryFn: getUsageHistory,
+    refetchInterval: 30000,
   })
 }

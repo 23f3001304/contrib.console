@@ -189,6 +189,7 @@ export interface WorkerStatus {
   active: boolean
   lastBeat: string | null
   currentTask: string | null
+  activeClients: number
   error: string | null
 }
 
@@ -276,4 +277,31 @@ export function requestRepoMap(input: {
     method: "POST",
     body: JSON.stringify(input),
   })
+}
+
+export interface UsageStats {
+  sessionUsedPercent: number
+  weeklyUsedPercent: number
+  weeklyResets: string
+  last24hRequests: number
+  last24hSessions: number
+  last7dRequests: number
+  last7dSessions: number
+  lastUpdated: string
+}
+
+export interface UsageHistoryEntry {
+  timestamp: string
+  last24hRequests: number
+  last7dRequests: number
+  sessionUsedPercent: number
+  weeklyUsedPercent: number
+}
+
+export function getUsageStats(): Promise<UsageStats | null> {
+  return request<UsageStats | null>("/api/usage-stats")
+}
+
+export function getUsageHistory(): Promise<UsageHistoryEntry[]> {
+  return request<UsageHistoryEntry[]>("/api/usage-history")
 }
