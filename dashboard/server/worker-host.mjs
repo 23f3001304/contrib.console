@@ -121,15 +121,17 @@ function spawnPty(cols, rows) {
       const cfg = readScheduleConfig()
       let cmd = cfg.agentCommand || "agy"
       if (cfg.bypassPermissions !== false) {
-        const isBypassedAgent = /\b(claude|agy|ollama)(\.exe)?\b/i.test(cmd)
-        const hasFlag = cmd.toLowerCase().includes("--dangerously-skip-permissions")
-        if (isBypassedAgent && !hasFlag) {
+        const isAgy = /\b(agy)(\.exe)?\b/i.test(cmd)
+        const isClaude = /\b(claude)(\.exe)?\b/i.test(cmd)
+        
+        if (isAgy && !cmd.toLowerCase().includes("--dangerously-skip-permissions")) {
           cmd += " --dangerously-skip-permissions"
         }
-        const isSandboxable = /\b(agy)(\.exe)?\b/i.test(cmd)
-        const hasSandbox = cmd.toLowerCase().includes("--sandbox")
-        if (isSandboxable && !hasSandbox) {
+        if (isAgy && !cmd.toLowerCase().includes("--sandbox")) {
           cmd += " --sandbox"
+        }
+        if (isClaude && !cmd.toLowerCase().includes("--permission-mode")) {
+          cmd += " --permission-mode bypassPermissions"
         }
       }
       next.write(cmd + "\r")
