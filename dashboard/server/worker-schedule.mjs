@@ -1,5 +1,6 @@
-import { readFileSync, writeFileSync, unlinkSync } from "node:fs"
+import { readFileSync, writeFileSync, unlinkSync, promises as fs } from "node:fs"
 import path from "node:path"
+import crypto from "node:crypto"
 
 const stripAnsi = (s) =>
   s.replace(/\x1b\[[0-9;?]*[a-zA-Z]/g, "").replace(/\x1b[()][AB0]/g, "")
@@ -55,10 +56,29 @@ export function startScheduler({ root, write, getRecent, getIdleMs, restart }) {
 
   async function launch(cfg, promptText) {
     let cmd = cfg.agentCommand || "agy"
-    if (cfg.bypassPermissions !== false) {
-      const isAgy = /\b(agy)(\.exe)?\b/i.test(cmd)
-      const isClaude = /\b(claude)(\.exe)?\b/i.test(cmd)
+    const isAgy = /\b(agy)(\.exe)?\b/i.test(cmd)
+    const isClaude = /\b(claude)(\.exe)?\b/i.test(cmd)
 
+    const sessionFile = path.join(root, "pipeline", "worker-session.json")
+    let sessionId = ""
+    let agentType = ""
+    try {
+      const raw = await fs.readFile(sessionFile, "utf8")
+      const parsed = JSON.parse(raw)
+      sessionId = parsed.sessionId
+      agentType = parsed.agentType
+    } catch {
+      sessionId = crypto.randomUUID()
+      agentType = isClaude ? "claude" : isAgy ? "agy" : "unknown"
+      try {
+        await fs.mkdir(path.dirname(sessionFile), { recursive: true })
+        await fs.writeFile(sessionFile, JSON.stringify({ sessionId, agentType }, null, 2), "utf8")
+      } catch {
+        // ignore
+      }
+    }
+
+    if (cfg.bypassPermissions !== false) {
       if (isAgy && !cmd.toLowerCase().includes("--dangerously-skip-permissions")) {
         cmd += " --dangerously-skip-permissions"
       }
@@ -68,6 +88,13 @@ export function startScheduler({ root, write, getRecent, getIdleMs, restart }) {
       if (isClaude && !cmd.toLowerCase().includes("--permission-mode")) {
         cmd += " --permission-mode bypassPermissions"
       }
+    }
+
+    if (isClaude && !cmd.toLowerCase().includes("--session-id")) {
+      cmd += ` --session-id ${sessionId}`
+    }
+    if (isAgy && !cmd.toLowerCase().includes("--conversation")) {
+      cmd += ` --conversation ${sessionId}`
     }
 
     if (agentRunning()) {

@@ -230,7 +230,35 @@ const historyPath = path.join(root, "pipeline", "usage-history.json")
 async function scrapeUsageStats() {
   try {
     await fsPromises.mkdir(path.join(root, "pipeline"), { recursive: true })
-    const { stdout } = await execAsync('claude -p "/usage"', {
+
+    // Read session file
+    let sessionId = ""
+    let agentType = "claude"
+    try {
+      const raw = await fsPromises.readFile(path.join(root, "pipeline", "worker-session.json"), "utf8")
+      const parsed = JSON.parse(raw)
+      sessionId = parsed.sessionId
+      agentType = parsed.agentType
+    } catch {
+      // fallback to schedule config
+      try {
+        const cfgRaw = await fsPromises.readFile(path.join(root, "pipeline", "schedule.json"), "utf8")
+        const cfg = JSON.parse(cfgRaw)
+        const cmd = cfg.agentCommand || "agy"
+        agentType = /\b(claude)(\.exe)?\b/i.test(cmd) ? "claude" : "agy"
+      } catch {
+        agentType = "claude"
+      }
+    }
+
+    let command = ""
+    if (agentType === "claude") {
+      command = sessionId ? `claude --session-id ${sessionId} -p "/usage"` : 'claude -p "/usage"'
+    } else {
+      command = sessionId ? `agy --conversation ${sessionId} -p "/usage"` : 'agy -p "/usage"'
+    }
+
+    const { stdout } = await execAsync(command, {
       timeout: 20000,
       env: { ...process.env }
     })
