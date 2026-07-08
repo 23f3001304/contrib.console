@@ -60,23 +60,29 @@ export function startScheduler({ root, write, getRecent, getIdleMs, restart }) {
     const isClaude = /\b(claude)(\.exe)?\b/i.test(cmd)
 
     const sessionFile = path.join(root, "pipeline", "worker-session.json")
-    let sessionId = ""
-    let agentType = ""
+    let sessionMap = {}
     try {
       const raw = await fs.readFile(sessionFile, "utf8")
-      const parsed = JSON.parse(raw)
-      sessionId = parsed.sessionId
-      agentType = parsed.agentType
+      sessionMap = JSON.parse(raw)
     } catch {
-      sessionId = crypto.randomUUID()
-      agentType = isClaude ? "claude" : isAgy ? "agy" : "unknown"
-      try {
-        await fs.mkdir(path.dirname(sessionFile), { recursive: true })
-        await fs.writeFile(sessionFile, JSON.stringify({ sessionId, agentType }, null, 2), "utf8")
-      } catch {
-        // ignore
-      }
+      sessionMap = {}
     }
+
+    if (isClaude && !sessionMap.claude) {
+      sessionMap.claude = crypto.randomUUID()
+    }
+    if (isAgy && !sessionMap.agy) {
+      sessionMap.agy = crypto.randomUUID()
+    }
+
+    try {
+      await fs.mkdir(path.dirname(sessionFile), { recursive: true })
+      await fs.writeFile(sessionFile, JSON.stringify(sessionMap, null, 2), "utf8")
+    } catch {
+      // ignore
+    }
+
+    const sessionId = isClaude ? sessionMap.claude : sessionMap.agy
 
     if (cfg.bypassPermissions !== false) {
       if (isAgy && !cmd.toLowerCase().includes("--dangerously-skip-permissions")) {

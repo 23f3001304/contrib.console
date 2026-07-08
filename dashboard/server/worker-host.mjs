@@ -274,64 +274,82 @@ async function scrapeUsageStats() {
   try {
     await fsPromises.mkdir(path.join(root, "pipeline"), { recursive: true })
 
-    // Read session file
-    let sessionId = ""
-    let agentType = "claude"
+    // Read session IDs map
+    let claudeSessionId = ""
+    let agySessionId = ""
     try {
       const raw = await fsPromises.readFile(path.join(root, "pipeline", "worker-session.json"), "utf8")
       const parsed = JSON.parse(raw)
-      sessionId = parsed.sessionId
-      agentType = parsed.agentType
+      claudeSessionId = parsed.claude || ""
+      agySessionId = parsed.agy || ""
     } catch {
-      // fallback to schedule config
+      // ignore
+    }
+
+    async function scrapeAgent(type, sessionId) {
+      let command = ""
+      if (type === "claude") {
+        command = sessionId ? `claude --session-id ${sessionId} -p "/usage"` : 'claude -p "/usage"'
+      } else {
+        command = sessionId ? `agy --conversation ${sessionId} -p "/usage"` : 'agy -p "/usage"'
+      }
+
+      let stdout = ""
       try {
-        const cfgRaw = await fsPromises.readFile(path.join(root, "pipeline", "schedule.json"), "utf8")
-        const cfg = JSON.parse(cfgRaw)
-        const cmd = cfg.agentCommand || "agy"
-        agentType = /\b(claude)(\.exe)?\b/i.test(cmd) ? "claude" : "agy"
-      } catch {
-        agentType = "claude"
+        const res = await execAsync(command, {
+          timeout: 20000,
+          env: { ...process.env }
+        })
+        stdout = res.stdout
+      } catch (err) {
+        stdout = err.stdout || ""
+      }
+
+      if (!stdout) return null
+
+      const sessionMatch = /Current session:\s*(\d+)%\s*used/i.exec(stdout)
+      const weeklyMatch = /Current week \(all models\):\s*(\d+)%\s*used\s*·\s*resets\s*([^\n]+)/i.exec(stdout)
+      const last24hMatch = /Last 24h\s*·\s*(\d+)\s*requests\s*·\s*(\d+)\s*session/i.exec(stdout)
+      const last7dMatch = /Last 7d\s*·\s*(\d+)\s*requests\s*·\s*(\d+)\s*session/i.exec(stdout)
+      
+      const modelUsageRegex = /Current week \(([^)]+)\):\s*(\d+)%\s*used/gi
+      let modelMatch
+      const models = {}
+      while ((modelMatch = modelUsageRegex.exec(stdout)) !== null) {
+        const modelName = modelMatch[1].trim()
+        const percent = parseInt(modelMatch[2], 10)
+        if (modelName.toLowerCase() !== "all models") {
+          models[modelName] = percent
+        }
+      }
+
+      return {
+        sessionUsedPercent: sessionMatch ? parseInt(sessionMatch[1], 10) : 0,
+        weeklyUsedPercent: weeklyMatch ? parseInt(weeklyMatch[1], 10) : 0,
+        weeklyResets: weeklyMatch ? weeklyMatch[2].trim() : "",
+        last24hRequests: last24hMatch ? parseInt(last24hMatch[1], 10) : 0,
+        last24hSessions: last24hMatch ? parseInt(last24hMatch[2], 10) : 0,
+        last7dRequests: last7dMatch ? parseInt(last7dMatch[1], 10) : 0,
+        last7dSessions: last7dMatch ? parseInt(last7dMatch[2], 10) : 0,
+        models,
+        lastUpdated: new Date().toISOString()
       }
     }
 
-    let command = ""
-    if (agentType === "claude") {
-      command = sessionId ? `claude --session-id ${sessionId} -p "/usage"` : 'claude -p "/usage"'
-    } else {
-      command = sessionId ? `agy --conversation ${sessionId} -p "/usage"` : 'agy -p "/usage"'
-    }
+    const claudeStats = await scrapeAgent("claude", claudeSessionId)
+    const agyStats = await scrapeAgent("agy", agySessionId)
 
-    const { stdout } = await execAsync(command, {
-      timeout: 20000,
-      env: { ...process.env }
-    })
-    
-    const sessionMatch = /Current session:\s*(\d+)%\s*used/i.exec(stdout)
-    const weeklyMatch = /Current week \(all models\):\s*(\d+)%\s*used\s*·\s*resets\s*([^\n]+)/i.exec(stdout)
-    const last24hMatch = /Last 24h\s*·\s*(\d+)\s*requests\s*·\s*(\d+)\s*session/i.exec(stdout)
-    const last7dMatch = /Last 7d\s*·\s*(\d+)\s*requests\s*·\s*(\d+)\s*session/i.exec(stdout)
-    
-    // Extract individual model weekly limits
-    const modelUsageRegex = /Current week \(([^)]+)\):\s*(\d+)%\s*used/gi
-    let modelMatch
-    const models = {}
-    while ((modelMatch = modelUsageRegex.exec(stdout)) !== null) {
-      const modelName = modelMatch[1].trim()
-      const percent = parseInt(modelMatch[2], 10)
-      if (modelName.toLowerCase() !== "all models") {
-        models[modelName] = percent
-      }
+    let existing = {}
+    try {
+      const rawStats = await fsPromises.readFile(statsPath, "utf8")
+      existing = JSON.parse(rawStats)
+    } catch {
+      existing = {}
     }
 
     const stats = {
-      sessionUsedPercent: sessionMatch ? parseInt(sessionMatch[1], 10) : 0,
-      weeklyUsedPercent: weeklyMatch ? parseInt(weeklyMatch[1], 10) : 0,
-      weeklyResets: weeklyMatch ? weeklyMatch[2].trim() : "",
-      last24hRequests: last24hMatch ? parseInt(last24hMatch[1], 10) : 0,
-      last24hSessions: last24hMatch ? parseInt(last24hMatch[2], 10) : 0,
-      last7dRequests: last7dMatch ? parseInt(last7dMatch[1], 10) : 0,
-      last7dSessions: last7dMatch ? parseInt(last7dMatch[2], 10) : 0,
-      models,
+      claude: claudeStats || existing.claude || null,
+      agy: agyStats || existing.agy || null,
       lastUpdated: new Date().toISOString()
     }
     
@@ -351,14 +369,21 @@ async function scrapeUsageStats() {
     if (
       !lastEntry ||
       new Date(lastEntry.timestamp).getMinutes() !== minute ||
-      lastEntry.last24hRequests !== stats.last24hRequests
+      (claudeStats && lastEntry.claude?.last24hRequests !== claudeStats.last24hRequests) ||
+      (agyStats && lastEntry.agy?.last24hRequests !== agyStats.last24hRequests)
     ) {
       history.push({
         timestamp: stats.lastUpdated,
-        last24hRequests: stats.last24hRequests,
-        last7dRequests: stats.last7dRequests,
-        sessionUsedPercent: stats.sessionUsedPercent,
-        weeklyUsedPercent: stats.weeklyUsedPercent
+        claude: claudeStats ? {
+          last24hRequests: claudeStats.last24hRequests,
+          sessionUsedPercent: claudeStats.sessionUsedPercent,
+          weeklyUsedPercent: claudeStats.weeklyUsedPercent
+        } : (lastEntry?.claude || null),
+        agy: agyStats ? {
+          last24hRequests: agyStats.last24hRequests,
+          sessionUsedPercent: agyStats.sessionUsedPercent,
+          weeklyUsedPercent: agyStats.weeklyUsedPercent
+        } : (lastEntry?.agy || null)
       })
       if (history.length > 100) {
         history.shift()
