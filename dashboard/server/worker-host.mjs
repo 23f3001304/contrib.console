@@ -134,7 +134,7 @@ function spawnPty(cols, rows) {
           cmd += " --permission-mode bypassPermissions"
         }
       }
-      next.write(cmd + "\r")
+      next.write(cmd + "\r\n")
     }
   }, 1500)
 

@@ -75,12 +75,12 @@ export function startScheduler({ root, write, getRecent, getIdleMs, restart }) {
         restart()
         await delay(2000)
       } else {
-        write(promptText + "\r")
+        write(promptText + "\r\n")
         lastLaunchedCommand = cmd
         return
       }
     }
-    write(cmd + "\r")
+    write(cmd + "\r\n")
     lastLaunchedCommand = cmd
     // Wait for the agent's input box or prompt, accepting the one-time bypass warning if it
     // appears, then send the prompt.
@@ -89,12 +89,12 @@ export function startScheduler({ root, write, getRecent, getIdleMs, restart }) {
       await delay(700)
       const recent = stripAnsi(getRecent())
       if (/bypass permissions|do you want to proceed|accept the risk/i.test(recent)) {
-        write("\r")
+        write("\r\n")
       }
       if (/\? for shortcuts|esc to interrupt|│\s*>|antigravity|agy|ollama|>>>|#\s*$/i.test(recent)) break
     }
     await delay(700)
-    write(promptText + "\r")
+    write(promptText + "\r\n")
   }
 
   function minutesSince(t, now) {
