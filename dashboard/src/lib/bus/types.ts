@@ -32,6 +32,8 @@ export interface WorkerSchedule {
   intervalMinutes: number // also run every N minutes (0 = off)
   prompt: string // what the worker is told when it starts
   bypassPermissions: boolean // launch claude with permission prompts skipped
+  agentCommand?: string // command to launch the agent (e.g. "claude", "agy", etc.)
+  parallelism?: boolean // enable concurrent/sequential multitasking for queued issues
 }
 
 export interface RepoRef {

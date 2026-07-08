@@ -34,15 +34,11 @@ rather than just queued.
 
 ## Tools and permissions
 
-You have full permission to do whatever you need inside the `Open_Source`
-folder: create files, run commands, and install anything. Two rules:
+You are granted full, unrestricted permission by default to read, write, run commands, and execute any changes within the `Open_Source` scoped directory.
 
-- Install tools into `Open_Source/.tools/` (or the repo you are working in) and
-  run them by path, for example `.tools/foo/foo.exe`. Do not change the system
-  PATH or install globally.
-- This freedom stops at the folder edge. You work only with local commits in the
-  clones: never `git push`, fetch, fork, open a PR, or make any network git or
-  GitHub call. I do every push and PR from the dashboard.
+- **Local Scope Hooking**: Any packages, tools, compilers, or binaries you pull, download, or install MUST be stored entirely inside the `Open_Source` directory (for example, in `Open_Source/.tools/` or inside the specific target repository's local folder).
+- **Direct Binary Invocation**: Always use the binary/executable directly by path (e.g. `.tools/foo/foo.exe` or `C:/Users/coehe/Open_Source/.tools/...`). Never run global installations (such as `npm install -g` or `pip install` globally) and never modify the global system PATH.
+- **Folder Edge Constraint**: Your write and change permissions stop completely at the `Open_Source` folder edge. You must work only with local files and local commits in the clones: never `git push`, fetch, fork, open a PR, or make any network git or GitHub calls. I do every push and PR from the dashboard.
 
 ## Each run
 
@@ -101,9 +97,16 @@ PR is local commits in the clone.
   PR's branch that addresses it (step 4). Do NOT push. I review it and push the
   update from the dashboard. Delete the file once the commit is written.
 
+## Multi-tasking and Parallelism (if enabled in settings)
+
+If parallel multi-tasking is enabled in the preferences/schedule configuration:
+- **Non-blocking task switching**: If a task has a commit generated and is waiting for review (status `awaiting-review`), do not pause the entire run. Immediately switch to the next queued issue in `pipeline/queue/*.json`.
+- **Parallel subagents**: You can spawn subagents (using `invoke_subagent` or background terminal calls) to work on different repositories/tasks concurrently.
+- **Multiple pending reviews**: You can have multiple independent review files waiting in `pipeline/reviews/<taskId>/<n>.json` concurrently.
+
 ## Hard gates
 
 - Nothing leaves the machine without a matching `approve` response on the final
   commit.
-- One commit per review cycle. Do not batch commits before review.
+- One commit per review cycle per task. Do not batch commits for the same task before review.
 - If anything is ambiguous, write a message and stop rather than guess.

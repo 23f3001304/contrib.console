@@ -18,12 +18,11 @@ export function TerminalPanel() {
           Worker terminal
         </h1>
         <p className="mt-2 text-sm text-muted-foreground">
-          A standalone shell process in your Open_Source folder. Run{" "}
+          A standalone shell process in your Open_Source folder. The configured agent CLI (default:{" "}
           <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">
-            claude
+            agy
           </code>
-          , then ask it to run the worker. It keeps running if you refresh or
-          close the dashboard, and follows WORKER.md.
+          ) automatically starts up and follows WORKER.md. You can monitor progress and type inputs directly in the window below.
         </p>
       </div>
 

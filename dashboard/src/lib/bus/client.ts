@@ -119,6 +119,11 @@ export function getRepoSuggestions(
   return request<RepoSuggestion[]>(`/api/repo-suggestions?${params.toString()}`)
 }
 
+export function searchRepos(q: string): Promise<RepoSuggestion[]> {
+  const params = new URLSearchParams({ q })
+  return request<RepoSuggestion[]>(`/api/repos/search?${params.toString()}`)
+}
+
 export function getRepoDetail(owner: string, repo: string): Promise<RepoDetail> {
   const params = new URLSearchParams({ owner, repo })
   return request<RepoDetail>(`/api/repo?${params.toString()}`)
@@ -184,6 +189,7 @@ export interface WorkerStatus {
   active: boolean
   lastBeat: string | null
   currentTask: string | null
+  error: string | null
 }
 
 export function getWorkerStatus(): Promise<WorkerStatus> {
@@ -234,6 +240,20 @@ export function removeQueue(taskId: string): Promise<{ ok: boolean }> {
   return request<{ ok: boolean }>("/api/queue/remove", {
     method: "POST",
     body: JSON.stringify({ taskId }),
+  })
+}
+
+export function updateQueueStatus(taskId: string, status: string): Promise<QueueItem> {
+  return request<QueueItem>("/api/queue/update-status", {
+    method: "POST",
+    body: JSON.stringify({ taskId, status }),
+  })
+}
+
+export function reorderQueue(taskIds: string[]): Promise<{ ok: boolean }> {
+  return request<{ ok: boolean }>("/api/queue/reorder", {
+    method: "POST",
+    body: JSON.stringify({ taskIds }),
   })
 }
 

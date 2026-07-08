@@ -26,6 +26,11 @@ function normalizeSchedule(input: unknown): WorkerSchedule {
         ? body.prompt
         : DEFAULT_SCHEDULE.prompt,
     bypassPermissions: body.bypassPermissions !== false,
+    agentCommand:
+      typeof body.agentCommand === "string" && body.agentCommand.trim()
+        ? body.agentCommand
+        : "agy",
+    parallelism: Boolean(body.parallelism),
   }
 }
 
@@ -122,6 +127,40 @@ export async function handleWorkRoutes(ctx: RouteContext): Promise<boolean> {
       return true
     }
     await pipeline.remove(`queue/${body.taskId}.json`)
+    sendJson(res, 200, { ok: true })
+    return true
+  }
+  if (route === "/queue/update-status" && method === "POST") {
+    const body = (await readBody(req)) as { taskId?: string; status?: any }
+    if (!body.taskId || !body.status) {
+      sendJson(res, 400, { error: "taskId and status are required" })
+      return true
+    }
+    const item = await pipeline.readJson<QueueItem | null>(`queue/${body.taskId}.json`, null)
+    if (!item) {
+      sendJson(res, 404, { error: "task not found" })
+      return true
+    }
+    item.status = body.status
+    await pipeline.writeJson(`queue/${body.taskId}.json`, item)
+    sendJson(res, 200, item)
+    return true
+  }
+  if (route === "/queue/reorder" && method === "POST") {
+    const body = (await readBody(req)) as { taskIds?: string[] }
+    if (!body.taskIds || !Array.isArray(body.taskIds)) {
+      sendJson(res, 400, { error: "taskIds array is required" })
+      return true
+    }
+    const baseTime = Date.now() - body.taskIds.length * 1000
+    for (let i = 0; i < body.taskIds.length; i++) {
+      const taskId = body.taskIds[i]
+      const item = await pipeline.readJson<QueueItem | null>(`queue/${taskId}.json`, null)
+      if (item) {
+        item.selectedAt = new Date(baseTime + i * 1000).toISOString()
+        await pipeline.writeJson(`queue/${taskId}.json`, item)
+      }
+    }
     sendJson(res, 200, { ok: true })
     return true
   }

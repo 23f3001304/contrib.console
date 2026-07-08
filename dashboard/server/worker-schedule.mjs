@@ -6,16 +6,17 @@ const stripAnsi = (s) =>
 const delay = (ms) => new Promise((r) => setTimeout(r, ms))
 
 const DEFAULT_PROMPT =
-  "Start a worker run per WORKER.md: take the top approved or queued issue, make one small change (max 50 lines, max 2 files), write a commit review for me, then stop. Do not push."
+  "Start a worker run per WORKER.md: take the top approved or queued issue, make one small change (max 50 lines, max 2 files), write a commit review for me, then stop. Do not push. You are granted full permission to read/write/modify any file within the scoped directory by default. If you need any tool, pull and install it directly within the scoped directory (e.g., .tools/) and invoke its binary directly by path; do not run global installs or modify the system PATH."
 
 const RESUME_PROMPT =
   "A commit review was just answered in the dashboard. Apply the newest response in pipeline/responses now, per WORKER.md: if it is approve, continue toward the issue with the next small commit (or finish the task if that was the final commit); if it is changes-requested, make the requested change as one new small reviewed commit. Then write the new review and stop. Do not push."
 
 // Drives scheduled and on-demand worker runs by typing into the live terminal.
 // Reads the schedule the dashboard saved and, at each due time (or when you
-// click Run now), launches claude with bypassed permissions and tells it to
+// click Run now), launches the configured agent and tells it to
 // start the worker. Runs inside the worker host so it works with no browser open.
-export function startScheduler({ root, write, getRecent, getIdleMs }) {
+export function startScheduler({ root, write, getRecent, getIdleMs, restart }) {
+  let lastLaunchedCommand = null
   const configPath = path.join(root, "pipeline", "schedule.json")
   const statePath = path.join(root, "pipeline", "schedule-state.json")
   const triggerPath = path.join(root, "pipeline", "schedule-trigger.json")
@@ -38,25 +39,48 @@ export function startScheduler({ root, write, getRecent, getIdleMs }) {
   }
   let busy = false
 
-  function claudeRunning() {
-    return /esc to interrupt|\? for shortcuts|welcome back|release-notes|│\s*>/i.test(
+  function agentRunning() {
+    return /esc to interrupt|\? for shortcuts|welcome back|release-notes|│\s*>|antigravity|agy|ollama|>>>|#\s*$/i.test(
       stripAnsi(getRecent()),
     )
   }
 
   function promptFor(cfg) {
-    return (cfg.prompt && cfg.prompt.trim()) || DEFAULT_PROMPT
+    let p = (cfg.prompt && cfg.prompt.trim()) || DEFAULT_PROMPT
+    if (cfg.parallelism === true) {
+      p += " Parallel multi-tasking is enabled: you can spawn subagents or background shells to process multiple queued issues in parallel, or iterate through them sequentially. Do not stop or wait for reviews on completed commits; proceed directly to work on and write commits for subsequent queued tasks in the pipeline."
+    }
+    return p
   }
 
   async function launch(cfg, promptText) {
-    if (claudeRunning()) {
-      write(promptText + "\r")
-      return
+    let cmd = cfg.agentCommand || "agy"
+    if (cfg.bypassPermissions !== false) {
+      const isBypassedAgent = /\b(claude|agy|ollama)(\.exe)?\b/i.test(cmd)
+      const hasFlag = cmd.toLowerCase().includes("--dangerously-skip-permissions")
+      if (isBypassedAgent && !hasFlag) {
+        cmd += " --dangerously-skip-permissions"
+      }
+      const isSandboxable = /\b(agy)(\.exe)?\b/i.test(cmd)
+      const hasSandbox = cmd.toLowerCase().includes("--sandbox")
+      if (isSandboxable && !hasSandbox) {
+        cmd += " --sandbox"
+      }
     }
-    const flag =
-      cfg.bypassPermissions === false ? "" : " --dangerously-skip-permissions"
-    write("claude" + flag + "\r")
-    // Wait for claude's input box, accepting the one-time bypass warning if it
+
+    if (agentRunning()) {
+      if (lastLaunchedCommand && lastLaunchedCommand !== cmd && restart) {
+        restart()
+        await delay(2000)
+      } else {
+        write(promptText + "\r")
+        lastLaunchedCommand = cmd
+        return
+      }
+    }
+    write(cmd + "\r")
+    lastLaunchedCommand = cmd
+    // Wait for the agent's input box or prompt, accepting the one-time bypass warning if it
     // appears, then send the prompt.
     const start = Date.now()
     while (Date.now() - start < 25000) {
@@ -65,7 +89,7 @@ export function startScheduler({ root, write, getRecent, getIdleMs }) {
       if (/bypass permissions|do you want to proceed|accept the risk/i.test(recent)) {
         write("\r")
       }
-      if (/\? for shortcuts|esc to interrupt|│\s*>/i.test(recent)) break
+      if (/\? for shortcuts|esc to interrupt|│\s*>|antigravity|agy|ollama|>>>|#\s*$/i.test(recent)) break
     }
     await delay(700)
     write(promptText + "\r")
@@ -111,7 +135,11 @@ export function startScheduler({ root, write, getRecent, getIdleMs }) {
       busy = true
       try {
         const resumeCfg = readJson(configPath, {})
-        await launch(resumeCfg, RESUME_PROMPT)
+        let text = RESUME_PROMPT
+        if (resumeCfg.parallelism === true) {
+          text += " Continue working on all other queued issues concurrently or sequentially as well."
+        }
+        await launch(resumeCfg, text)
       } finally {
         busy = false
       }

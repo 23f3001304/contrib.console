@@ -128,6 +128,23 @@ export class GitHubClient {
     }))
   }
 
+  async searchRepos(q: string): Promise<RepoSuggestion[]> {
+    const data = await this.get<{ items: SearchReposItem[] }>(
+      "/search/repositories",
+      { q, per_page: 15 },
+    )
+    return data.items.map((item) => ({
+      owner: item.owner.login,
+      name: item.name,
+      url: item.html_url,
+      description: item.description ?? "",
+      language: item.language ?? "",
+      stars: item.stargazers_count,
+      openIssues: item.open_issues_count,
+      reason: repoReason(item),
+    }))
+  }
+
   // Suggest repos for the given languages, topics, and minimum stars. Merged
   // and deduped across languages, all with good first issues available.
   async suggestRepos(opts: SuggestOptions): Promise<RepoSuggestion[]> {

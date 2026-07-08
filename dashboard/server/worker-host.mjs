@@ -1,8 +1,68 @@
 import { createRequire } from "node:module"
-import { writeFileSync } from "node:fs"
+import { writeFileSync, readFileSync } from "node:fs"
+import { execSync } from "node:child_process"
 import path from "node:path"
 import { fileURLToPath } from "node:url"
 import { startScheduler } from "./worker-schedule.mjs"
+
+const stripAnsi = (s) =>
+  s.replace(/\x1b\[[0-9;?]*[a-zA-Z]/g, "").replace(/\x1b[()][AB0]/g, "")
+
+function agentRunning(recent) {
+  return /esc to interrupt|\? for shortcuts|welcome back|release-notes|│\s*>|antigravity|agy|ollama|>>>|#\s*$/i.test(
+    stripAnsi(recent),
+  )
+}
+
+function hasChildProcesses(pid) {
+  if (!pid) return false
+  try {
+    if (process.platform === "win32") {
+      const out = execSync(`wmic process where ParentProcessId=${pid} get ProcessId`, {
+        stdio: ["pipe", "pipe", "ignore"],
+        timeout: 1000,
+      }).toString()
+      const lines = out.split("\n").map((l) => l.trim()).filter(Boolean)
+      return lines.length > 1
+    } else {
+      const out = execSync(`pgrep -P ${pid}`, {
+        stdio: ["pipe", "pipe", "ignore"],
+        timeout: 1000,
+      }).toString()
+      return out.trim().length > 0
+    }
+  } catch {
+    return false
+  }
+}
+
+function detectAgentError(recent) {
+  const cleanText = stripAnsi(recent)
+  const ERROR_SIGNATURES = [
+    { pattern: /\b(session expired|login expired)\b/i, message: "CLI Session Expired: Please log in again inside the terminal." },
+    { pattern: /\b(unauthorized|auth failed|authentication failed|invalid API key|401 Unauthorized)\b/i, message: "CLI Authorization Error: Invalid token or credentials." },
+    { pattern: /\b(permission denied|EACCES)\b/i, message: "CLI Permission Error: Scoped file-system access denied." },
+    { pattern: /is not recognized as an internal or external command/i, message: "CLI Error: Command not found. Please install the agent CLI." },
+    { pattern: /command not found/i, message: "CLI Error: Command not found. Please install the agent CLI." },
+    { pattern: /\b(FATAL ERROR|uncaughtException|crashed)\b/i, message: "CLI Critical Error: The agent process crashed." },
+  ]
+  
+  for (const sig of ERROR_SIGNATURES) {
+    if (sig.pattern.test(cleanText)) {
+      return sig.message
+    }
+  }
+  return null
+}
+
+function readScheduleConfig() {
+  try {
+    const file = path.join(root, "pipeline", "schedule.json")
+    return JSON.parse(readFileSync(file, "utf8"))
+  } catch {
+    return {}
+  }
+}
 
 const require = createRequire(import.meta.url)
 const { spawn } = require("node-pty")
@@ -53,6 +113,29 @@ function spawnPty(cols, rows) {
   next.onExit(() => {
     if (pty === next) pty = null
   })
+
+  // Wait 1.5 seconds for shell initialization, then auto-launch the agent CLI if not already running
+  setTimeout(() => {
+    const recent = chunks.join("")
+    if (!agentRunning(recent)) {
+      const cfg = readScheduleConfig()
+      let cmd = cfg.agentCommand || "agy"
+      if (cfg.bypassPermissions !== false) {
+        const isBypassedAgent = /\b(claude|agy|ollama)(\.exe)?\b/i.test(cmd)
+        const hasFlag = cmd.toLowerCase().includes("--dangerously-skip-permissions")
+        if (isBypassedAgent && !hasFlag) {
+          cmd += " --dangerously-skip-permissions"
+        }
+        const isSandboxable = /\b(agy)(\.exe)?\b/i.test(cmd)
+        const hasSandbox = cmd.toLowerCase().includes("--sandbox")
+        if (isSandboxable && !hasSandbox) {
+          cmd += " --sandbox"
+        }
+      }
+      next.write(cmd + "\r")
+    }
+  }, 1500)
+
   return next
 }
 
@@ -65,12 +148,14 @@ function ensurePty(cols, rows) {
 // output in the last few seconds (claude is working), "idle" when quiet. Written
 // by the host itself, so it stays accurate without the worker maintaining it.
 function writeStatus() {
-  const state = Date.now() - lastActivity < 4000 ? "running" : "idle"
+  const recent = chunks.join("")
+  const state = pty && hasChildProcesses(pty.pid) ? "running" : "idle"
+  const error = detectAgentError(recent)
   try {
     writeFileSync(
       statusPath,
       JSON.stringify(
-        { state, lastBeat: new Date().toISOString(), activeClients: clients.size },
+        { state, error, lastBeat: new Date().toISOString(), activeClients: clients.size },
         null,
         2,
       ),
@@ -84,12 +169,19 @@ writeStatus()
 
 ensurePty()
 
-// Scheduled and on-demand auto-runs: types the launch + start prompt into the PTY.
 startScheduler({
   root,
   write: (data) => ensurePty().write(data),
   getRecent: () => chunks.slice(-120).join(""),
   getIdleMs: () => Date.now() - lastActivity,
+  restart: () => {
+    try {
+      if (pty) pty.kill()
+    } catch {
+      // ignore
+    }
+    pty = spawnPty()
+  },
 })
 
 const wss = new WebSocketServer({ host: "127.0.0.1", port: PORT })

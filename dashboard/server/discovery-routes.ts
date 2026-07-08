@@ -94,6 +94,18 @@ export async function handleDiscoveryRoutes(ctx: RouteContext): Promise<boolean>
     sendJson(res, 200, suggestions)
     return true
   }
+  if (route === "/repos/search" && method === "GET") {
+    const gh = requireGitHub(res, github)
+    if (!gh) return true
+    const q = query.get("q") ?? ""
+    if (!q) {
+      sendJson(res, 400, { error: "q is required" })
+      return true
+    }
+    const results = await gh.searchRepos(q)
+    sendJson(res, 200, results)
+    return true
+  }
 
   if (route === "/repo" && method === "GET") {
     const gh = requireGitHub(res, github)
@@ -156,9 +168,45 @@ export async function handleDiscoveryRoutes(ctx: RouteContext): Promise<boolean>
   }
   if (route === "/repos" && method === "PUT") {
     const body = await readBody(req)
-    const repos = Array.isArray(body) ? (body as ApprovedRepo[]) : []
-    await pipeline.writeJson("repos.json", repos)
-    sendJson(res, 200, repos)
+    const nextRepos = Array.isArray(body) ? (body as ApprovedRepo[]) : []
+    const oldRepos = await pipeline.readJson<ApprovedRepo[]>("repos.json", [])
+
+    const newSet = new Set(nextRepos.map((r) => `${r.owner.toLowerCase()}/${r.name.toLowerCase()}`))
+    const removed = oldRepos.filter(
+      (r) => !newSet.has(`${r.owner.toLowerCase()}/${r.name.toLowerCase()}`)
+    )
+
+    if (removed.length > 0) {
+      const queueRoot = pipeline.resolveInPipeline("queue")
+      let names: string[]
+      try {
+        names = await fs.readdir(queueRoot)
+      } catch (err) {
+        if ((err as NodeJS.ErrnoException).code === "ENOENT") names = []
+        else throw err
+      }
+      for (const name of names) {
+        if (!name.endsWith(".json")) continue
+        const file = path.join(queueRoot, name)
+        try {
+          const raw = await fs.readFile(file, "utf8")
+          const item = JSON.parse(raw) as any
+          const isRemoved = removed.some(
+            (r) =>
+              r.owner.toLowerCase() === item.repo.owner.toLowerCase() &&
+              r.name.toLowerCase() === item.repo.name.toLowerCase()
+          )
+          if (isRemoved) {
+            await fs.unlink(file)
+          }
+        } catch {
+          // ignore
+        }
+      }
+    }
+
+    await pipeline.writeJson("repos.json", nextRepos)
+    sendJson(res, 200, nextRepos)
     return true
   }
   if (route === "/repos/add" && method === "POST") {

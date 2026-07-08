@@ -1,4 +1,4 @@
-import { NavLink, Outlet, useLocation } from "react-router-dom"
+import { Link, NavLink, Outlet, useLocation } from "react-router-dom"
 import {
   Compass,
   FolderGit2,
@@ -113,12 +113,31 @@ export function AppShell() {
       </aside>
 
       <main className="min-w-0 flex-1">
+        {worker.data?.error && (
+          <div className="mx-auto max-w-4xl px-8 pt-6">
+            <Link
+              to="/terminal"
+              className="flex items-center gap-2.5 rounded-lg border border-destructive/20 bg-destructive/5 px-4 py-3 text-xs text-destructive-foreground transition-colors hover:bg-destructive/10 animate-pulse"
+            >
+              <span className="relative flex size-2 shrink-0">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75"></span>
+                <span className="relative inline-flex rounded-full size-2 bg-red-500"></span>
+              </span>
+              <span className="font-mono font-medium flex-1">
+                {worker.data.error}
+              </span>
+              <span className="underline hover:no-underline font-mono">
+                Open Terminal &rarr;
+              </span>
+            </Link>
+          </div>
+        )}
         <div
           key={location.pathname}
           className={cn(
             "duration-300 animate-in fade-in-0 slide-in-from-bottom-1",
-            location.pathname === "/terminal"
-              ? "px-8 py-10"
+            location.pathname === "/terminal" || location.pathname === "/work"
+              ? "px-8 py-10 w-full"
               : "mx-auto max-w-4xl px-8 pb-12 pt-14",
           )}
         >

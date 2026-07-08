@@ -14,6 +14,13 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { ChipField } from "@/components/chip-field"
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import {
   useRunScheduleNow,
   useSchedule,
   useUpdateSchedule,
@@ -58,12 +65,23 @@ export function AutomationSettings() {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-5">
-        <div className="flex items-center gap-2.5">
-          <Checkbox
-            checked={form.enabled}
-            onCheckedChange={(v) => set({ enabled: v === true })}
-          />
-          <span className="text-sm">Enable scheduled runs</span>
+        <div className="flex flex-wrap items-center gap-6">
+          <div className="flex items-center gap-2.5">
+            <Checkbox
+              id="enable-scheduled-runs"
+              checked={form.enabled}
+              onCheckedChange={(v) => set({ enabled: v === true })}
+            />
+            <Label htmlFor="enable-scheduled-runs" className="text-sm font-normal">Enable scheduled runs</Label>
+          </div>
+          <div className="flex items-center gap-2.5">
+            <Checkbox
+              id="enable-parallelism"
+              checked={form.parallelism}
+              onCheckedChange={(v) => set({ parallelism: v === true })}
+            />
+            <Label htmlFor="enable-parallelism" className="text-sm font-normal">Enable parallel/sequential multi-tasking (process all queued issues concurrently)</Label>
+          </div>
         </div>
 
         <div className="space-y-1.5">
@@ -79,6 +97,59 @@ export function AutomationSettings() {
           <p className="text-xs text-muted-foreground">
             Times use your computer's local time ({tz}, {offsetLabel}).
           </p>
+        </div>
+
+        <div className="grid gap-4 sm:grid-cols-2">
+          <div className="space-y-1.5">
+            <Label
+              htmlFor="agent-type"
+              className="font-mono text-xs text-muted-foreground"
+            >
+              agent CLI agent/tool
+            </Label>
+            <Select
+              value={
+                form.agentCommand === "claude"
+                  ? "claude"
+                  : form.agentCommand === "agy"
+                    ? "agy"
+                    : form.agentCommand?.startsWith("ollama")
+                      ? "ollama"
+                      : "custom"
+              }
+              onValueChange={(val) => {
+                if (val === "claude") set({ agentCommand: "claude" })
+                else if (val === "agy") set({ agentCommand: "agy" })
+                else if (val === "ollama") set({ agentCommand: "ollama run llama3" })
+                else set({ agentCommand: "" })
+              }}
+            >
+              <SelectTrigger id="agent-type" className="w-full">
+                <SelectValue placeholder="Select an agent CLI" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="claude">Claude Code (claude)</SelectItem>
+                <SelectItem value="agy">Antigravity CLI (agy)</SelectItem>
+                <SelectItem value="ollama">Ollama (ollama run)</SelectItem>
+                <SelectItem value="custom">Custom Command</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-1.5">
+            <Label
+              htmlFor="custom-agent-cmd"
+              className="font-mono text-xs text-muted-foreground"
+            >
+              agent launch command line
+            </Label>
+            <Input
+              id="custom-agent-cmd"
+              value={form.agentCommand ?? ""}
+              placeholder="e.g. claude or agy"
+              onChange={(e) => set({ agentCommand: e.target.value })}
+            />
+          </div>
         </div>
 
         <div className="grid gap-4 sm:grid-cols-2">

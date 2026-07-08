@@ -199,7 +199,7 @@ function GenerateMap({
           : pending
             ? workerActive
               ? "The worker is generating this now."
-              : "Map requested. Start the worker in the Terminal (run claude, then ask it to run the worker) to generate it."
+              : "Map requested. Start the worker in the Terminal (run the agent, then ask it to run the worker) to generate it."
             : "No map yet. Generate an in-depth explanation of how this repo works, file by file."}
       </p>
       <Button

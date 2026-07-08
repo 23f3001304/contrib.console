@@ -89,6 +89,7 @@ export async function handleReviewRoutes(ctx: RouteContext): Promise<boolean> {
       state?: string
       lastBeat?: string
       activeClients?: number
+      error?: string | null
     } | null>("worker-status.json", null)
     const beatAgeMs = status?.lastBeat
       ? Date.now() - new Date(status.lastBeat).getTime()
@@ -106,6 +107,7 @@ export async function handleReviewRoutes(ctx: RouteContext): Promise<boolean> {
       active: state === "running",
       lastBeat: status?.lastBeat ?? null,
       activeClients: status?.activeClients ?? 0,
+      error: status?.error ?? null,
     })
     return true
   }

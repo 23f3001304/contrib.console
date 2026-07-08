@@ -12,6 +12,8 @@ import {
   getRepos,
   postQueue,
   removeQueue,
+  updateQueueStatus,
+  reorderQueue,
   getReviews,
   getWorkerStatus,
   getMessages,
@@ -225,6 +227,27 @@ export function useDequeue() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: (taskId: string) => removeQueue(taskId),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["queue"] })
+    },
+  })
+}
+
+export function useUpdateQueueStatus() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (input: { taskId: string; status: string }) =>
+      updateQueueStatus(input.taskId, input.status),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["queue"] })
+    },
+  })
+}
+
+export function useReorderQueue() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (taskIds: string[]) => reorderQueue(taskIds),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["queue"] })
     },

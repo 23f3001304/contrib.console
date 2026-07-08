@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { toast } from "sonner"
-import { Plus, RefreshCw, Search } from "lucide-react"
+import { RefreshCw, Search, X, Loader2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -16,7 +16,7 @@ import { EmptyNote } from "@/components/empty-note"
 import { ChipField } from "@/components/chip-field"
 import { LanguageField } from "@/components/language-field"
 import { SuggestionCard } from "@/components/suggestion-card"
-import { getRepoSuggestions } from "@/lib/bus/client"
+import { getRepoSuggestions, searchRepos } from "@/lib/bus/client"
 import {
   useAddRepo,
   usePreferences,
@@ -44,7 +44,12 @@ export function DiscoverPanel() {
   const [loading, setLoading] = useState(false)
   const [loadingMore, setLoadingMore] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  
+  // Search states
   const [manual, setManual] = useState("")
+  const [searchResults, setSearchResults] = useState<RepoSuggestion[]>([])
+  const [searching, setSearching] = useState(false)
+  const [searchError, setSearchError] = useState<string | null>(null)
 
   const approvedKeys = useMemo(
     () => new Set((repos.data ?? []).map((repo) => `${repo.owner}/${repo.name}`)),
@@ -134,36 +139,33 @@ export function DiscoverPanel() {
     )
   }
 
-  function addManual() {
+  async function handleSearch() {
     const value = manual.trim()
-    if (!value) return
-    let owner: string | undefined
-    let name: string | undefined
-    if (value.includes("github.com")) {
-      const match = value.match(/github\.com\/([^/\s]+)\/([^/\s#?]+)/i)
-      if (match) {
-        owner = match[1]
-        name = match[2].replace(/\.git$/, "")
-      }
-    } else if (value.includes("/")) {
-      ;[owner, name] = value.split("/")
-    }
-    if (!owner || !name) {
-      toast.error("Enter owner/name or a GitHub url")
+    if (!value) {
+      setSearchResults([])
+      setSearchError(null)
       return
     }
-    const targetOwner = owner
-    const targetName = name
-    add.mutate(
-      { owner: targetOwner, name: targetName },
-      {
-        onSuccess: () => {
-          setManual("")
-          navigate(`/repo/${targetOwner}/${targetName}`)
-        },
-        onError: (err) => toast.error(err.message),
-      },
-    )
+    setSearching(true)
+    setSearchError(null)
+    try {
+      const data = await searchRepos(value)
+      setSearchResults(data)
+      if (data.length === 0) {
+        setSearchError("No repositories found matching your query.")
+      }
+    } catch (err) {
+      setSearchError((err as Error).message)
+      setSearchResults([])
+    } finally {
+      setSearching(false)
+    }
+  }
+
+  function clearSearch() {
+    setManual("")
+    setSearchResults([])
+    setSearchError(null)
   }
 
   const noLanguages = languages.length === 0
@@ -232,54 +234,112 @@ export function DiscoverPanel() {
           <Search className="size-4 shrink-0 text-muted-foreground" />
           <Input
             value={manual}
-            placeholder="add a repo directly: owner/name or a GitHub url"
+            placeholder="Search GitHub repositories directly (e.g. 'stdlib' or 'facebook/react')"
             onChange={(e) => setManual(e.target.value)}
             onKeyDown={(e) => {
               if (e.key === "Enter") {
                 e.preventDefault()
-                addManual()
+                void handleSearch()
               }
             }}
             className="h-9 font-mono text-sm"
           />
-          <Button variant="secondary" onClick={addManual} disabled={add.isPending}>
-            <Plus className="size-4" /> Add
+          <Button variant="secondary" onClick={handleSearch} disabled={searching} className="gap-1.5">
+            {searching ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <Search className="size-4" />
+            )}
+            Search
           </Button>
+          {(searchResults.length > 0 || searchError || manual) && (
+            <Button variant="ghost" size="icon" onClick={clearSearch} className="size-9 shrink-0 text-muted-foreground hover:text-foreground">
+              <X className="size-4" />
+            </Button>
+          )}
         </div>
       </div>
 
-      {noLanguages && (
-        <EmptyNote>Add at least one language above, then Refresh.</EmptyNote>
-      )}
-      {!noLanguages && loading && <EmptyNote>Loading suggestions...</EmptyNote>}
-      {error && <EmptyNote>{error}</EmptyNote>}
-      {!noLanguages && !loading && !error && items.length === 0 && (
-        <EmptyNote>No suggestions. Try different filters and Refresh.</EmptyNote>
-      )}
+      {/* Search Results Panel */}
+      {(searching || searchResults.length > 0 || searchError) && (
+        <div className="space-y-4 rounded-xl border border-dashed border-brand/20 bg-brand/5 p-5 animate-in fade-in-50 duration-200">
+          <div className="flex items-center justify-between">
+            <h2 className="font-mono text-xs font-semibold uppercase tracking-wider text-brand">
+              GitHub Search Results
+            </h2>
+            <Button variant="ghost" size="sm" onClick={clearSearch} className="h-7 text-xs font-mono">
+              Clear Results
+            </Button>
+          </div>
 
-      {items.length > 0 && (
-        <div className="grid gap-3 sm:grid-cols-2">
-          {items.map((suggestion) => (
-            <SuggestionCard
-              key={`${suggestion.owner}/${suggestion.name}`}
-              suggestion={suggestion}
-              approved={approvedKeys.has(`${suggestion.owner}/${suggestion.name}`)}
-              pending={add.isPending}
-              onApprove={() => approve(suggestion)}
-              onOpen={() =>
-                navigate(`/repo/${suggestion.owner}/${suggestion.name}`)
-              }
-            />
-          ))}
+          {searching && (
+            <div className="py-6 text-center text-sm font-mono text-muted-foreground">
+              Searching GitHub for "{manual}"...
+            </div>
+          )}
+
+          {searchError && (
+            <div className="py-2 text-center text-sm text-destructive font-mono">
+              {searchError}
+            </div>
+          )}
+
+          {searchResults.length > 0 && (
+            <div className="grid gap-3 sm:grid-cols-2">
+              {searchResults.map((suggestion) => (
+                <SuggestionCard
+                  key={`search-${suggestion.owner}/${suggestion.name}`}
+                  suggestion={suggestion}
+                  approved={approvedKeys.has(`${suggestion.owner}/${suggestion.name}`)}
+                  pending={add.isPending}
+                  onApprove={() => approve(suggestion)}
+                  onOpen={() =>
+                    navigate(`/repo/${suggestion.owner}/${suggestion.name}`)
+                  }
+                />
+              ))}
+            </div>
+          )}
         </div>
       )}
 
-      {items.length > 0 && (
-        <div className="flex justify-center">
-          <Button variant="outline" onClick={loadMore} disabled={loadingMore}>
-            {loadingMore ? "Loading..." : "Load more"}
-          </Button>
-        </div>
+      {/* Discover Suggestions */}
+      {!searching && searchResults.length === 0 && (
+        <>
+          {noLanguages && (
+            <EmptyNote>Add at least one language above, then Refresh.</EmptyNote>
+          )}
+          {!noLanguages && loading && <EmptyNote>Loading suggestions...</EmptyNote>}
+          {error && <EmptyNote>{error}</EmptyNote>}
+          {!noLanguages && !loading && !error && items.length === 0 && (
+            <EmptyNote>No suggestions. Try different filters and Refresh.</EmptyNote>
+          )}
+
+          {items.length > 0 && (
+            <div className="grid gap-3 sm:grid-cols-2">
+              {items.map((suggestion) => (
+                <SuggestionCard
+                  key={`${suggestion.owner}/${suggestion.name}`}
+                  suggestion={suggestion}
+                  approved={approvedKeys.has(`${suggestion.owner}/${suggestion.name}`)}
+                  pending={add.isPending}
+                  onApprove={() => approve(suggestion)}
+                  onOpen={() =>
+                    navigate(`/repo/${suggestion.owner}/${suggestion.name}`)
+                  }
+                />
+              ))}
+            </div>
+          )}
+
+          {items.length > 0 && (
+            <div className="flex justify-center">
+              <Button variant="outline" onClick={loadMore} disabled={loadingMore}>
+                {loadingMore ? "Loading..." : "Load more"}
+              </Button>
+            </div>
+          )}
+        </>
       )}
     </div>
   )
