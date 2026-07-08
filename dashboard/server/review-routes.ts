@@ -123,5 +123,16 @@ export async function handleReviewRoutes(ctx: RouteContext): Promise<boolean> {
     return true
   }
 
+  if (route === "/worker-session-usage" && method === "GET") {
+    const usage = await pipeline.readJson<any>("worker-session-usage.json", {
+      inputTokens: 0,
+      outputTokens: 0,
+      cost: 0,
+      lastUpdated: new Date().toISOString()
+    })
+    sendJson(res, 200, usage)
+    return true
+  }
+
   return false
 }

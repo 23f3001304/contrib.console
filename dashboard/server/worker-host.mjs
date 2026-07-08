@@ -147,6 +147,39 @@ function ensurePty(cols, rows) {
   return pty
 }
 
+function extractTokensAndCost(text) {
+  const clean = stripAnsi(text)
+  const inputMatches = [...clean.matchAll(/(\d[\d,.]*k?)\s*input\s*(?:tokens?)?/gi)]
+  const outputMatches = [...clean.matchAll(/(\d[\d,.]*k?)\s*output\s*(?:tokens?)?/gi)]
+  const costMatches = [...clean.matchAll(/\$([0-9]+(?:\.[0-9]+)?)/gi)]
+  
+  let totalInput = 0
+  let totalOutput = 0
+  let totalCost = 0
+  
+  function parseTokenCount(str) {
+    str = str.toLowerCase().replace(/,/g, "").trim()
+    if (str.endsWith("k")) return parseFloat(str) * 1000
+    if (str.endsWith("m")) return parseFloat(str) * 1000000
+    return parseFloat(str) || 0
+  }
+  
+  if (inputMatches.length > 0) {
+    const lastInput = inputMatches[inputMatches.length - 1][1]
+    totalInput = parseTokenCount(lastInput)
+  }
+  if (outputMatches.length > 0) {
+    const lastOutput = outputMatches[outputMatches.length - 1][1]
+    totalOutput = parseTokenCount(lastOutput)
+  }
+  if (costMatches.length > 0) {
+    const lastCost = costMatches[costMatches.length - 1][1]
+    totalCost = parseFloat(lastCost) || 0
+  }
+  
+  return { inputTokens: totalInput, outputTokens: totalOutput, cost: totalCost }
+}
+
 // Heartbeat for the dashboard's worker dot: "running" when the terminal produced
 // output in the last few seconds (claude is working), "idle" when quiet. Written
 // by the host itself, so it stays accurate without the worker maintaining it.
@@ -154,6 +187,8 @@ function writeStatus() {
   const recent = chunks.join("")
   const state = pty && hasChildProcesses(pty.pid) ? "running" : "idle"
   const error = detectAgentError(recent)
+  const usage = extractTokensAndCost(recent)
+  
   try {
     writeFileSync(
       statusPath,
@@ -162,6 +197,14 @@ function writeStatus() {
         null,
         2,
       ),
+    )
+    writeFileSync(
+      path.join(root, "pipeline", "worker-session-usage.json"),
+      JSON.stringify(
+        { ...usage, lastUpdated: new Date().toISOString() },
+        null,
+        2
+      )
     )
   } catch {
     // pipeline dir not ready yet; the next tick retries
@@ -268,6 +311,18 @@ async function scrapeUsageStats() {
     const last24hMatch = /Last 24h\s*·\s*(\d+)\s*requests\s*·\s*(\d+)\s*session/i.exec(stdout)
     const last7dMatch = /Last 7d\s*·\s*(\d+)\s*requests\s*·\s*(\d+)\s*session/i.exec(stdout)
     
+    // Extract individual model weekly limits
+    const modelUsageRegex = /Current week \(([^)]+)\):\s*(\d+)%\s*used/gi
+    let modelMatch
+    const models = {}
+    while ((modelMatch = modelUsageRegex.exec(stdout)) !== null) {
+      const modelName = modelMatch[1].trim()
+      const percent = parseInt(modelMatch[2], 10)
+      if (modelName.toLowerCase() !== "all models") {
+        models[modelName] = percent
+      }
+    }
+
     const stats = {
       sessionUsedPercent: sessionMatch ? parseInt(sessionMatch[1], 10) : 0,
       weeklyUsedPercent: weeklyMatch ? parseInt(weeklyMatch[1], 10) : 0,
@@ -276,6 +331,7 @@ async function scrapeUsageStats() {
       last24hSessions: last24hMatch ? parseInt(last24hMatch[2], 10) : 0,
       last7dRequests: last7dMatch ? parseInt(last7dMatch[1], 10) : 0,
       last7dSessions: last7dMatch ? parseInt(last7dMatch[2], 10) : 0,
+      models,
       lastUpdated: new Date().toISOString()
     }
     

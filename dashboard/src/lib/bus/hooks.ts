@@ -27,6 +27,7 @@ import {
   getPulls,
   getUsageStats,
   getUsageHistory,
+  getWorkerSessionUsage,
   getPullComments,
   openPullRequest,
   sendCommentToWorker,
@@ -293,5 +294,13 @@ export function useUsageHistory() {
     queryKey: ["usage-history"],
     queryFn: getUsageHistory,
     refetchInterval: 30000,
+  })
+}
+
+export function useWorkerSessionUsage() {
+  return useQuery({
+    queryKey: ["worker-session-usage"],
+    queryFn: getWorkerSessionUsage,
+    refetchInterval: 5000,
   })
 }

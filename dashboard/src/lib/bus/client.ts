@@ -287,6 +287,7 @@ export interface UsageStats {
   last24hSessions: number
   last7dRequests: number
   last7dSessions: number
+  models?: Record<string, number>
   lastUpdated: string
 }
 
@@ -298,10 +299,21 @@ export interface UsageHistoryEntry {
   weeklyUsedPercent: number
 }
 
+export interface WorkerSessionUsage {
+  inputTokens: number
+  outputTokens: number
+  cost: number
+  lastUpdated: string
+}
+
 export function getUsageStats(): Promise<UsageStats | null> {
   return request<UsageStats | null>("/api/usage-stats")
 }
 
 export function getUsageHistory(): Promise<UsageHistoryEntry[]> {
   return request<UsageHistoryEntry[]>("/api/usage-history")
+}
+
+export function getWorkerSessionUsage(): Promise<WorkerSessionUsage> {
+  return request<WorkerSessionUsage>("/api/worker-session-usage")
 }

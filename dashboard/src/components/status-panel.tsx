@@ -2,18 +2,20 @@ import { cn } from "@/lib/utils"
 import {
   useUsageStats,
   useUsageHistory,
-  useWorkerStatus
+  useWorkerStatus,
+  useWorkerSessionUsage
 } from "@/lib/bus/hooks"
 
 export function StatusPanel() {
   const statsQuery = useUsageStats()
   const historyQuery = useUsageHistory()
   const workerQuery = useWorkerStatus()
+  const sessionUsageQuery = useWorkerSessionUsage()
 
   const stats = statsQuery.data
   const history = historyQuery.data ?? []
   const worker = workerQuery.data
-
+  const sessionUsage = sessionUsageQuery.data
 
   // Progress bar generator
   function renderAsciiBar(percent: number) {
@@ -35,7 +37,6 @@ export function StatusPanel() {
     }
   }
 
-  // Format date only for history logs
   function formatLogTime(isoString: string) {
     try {
       return new Date(isoString).toLocaleTimeString([], {
@@ -46,6 +47,12 @@ export function StatusPanel() {
       return "--:--"
     }
   }
+
+  function formatNumber(num: number) {
+    return new Intl.NumberFormat().format(num)
+  }
+
+  const hasModels = stats?.models && Object.keys(stats.models).length > 0
 
   return (
     <div className="space-y-8 font-mono text-xs text-muted-foreground select-none">
@@ -58,7 +65,7 @@ export function StatusPanel() {
       {/* Diagnostics List */}
       <div className="space-y-2 border-l border-white/5 pl-4 py-1">
         <div className="flex items-center gap-3">
-          <span className="w-24 text-white">worker_state:</span>
+          <span className="w-32 text-white">worker_state:</span>
           <span className={cn(
             "flex items-center gap-1.5",
             worker?.active ? "text-emerald-400" : "text-amber-400"
@@ -74,15 +81,40 @@ export function StatusPanel() {
           )}
         </div>
 
+        {/* Worker Session Stats */}
         <div className="flex items-center gap-3">
-          <span className="w-24 text-white">session_util:</span>
+          <span className="w-32 text-white">session_input:</span>
+          <span className="text-foreground">
+            {sessionUsage ? `${formatNumber(sessionUsage.inputTokens)} tokens` : "0 tokens"}
+          </span>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <span className="w-32 text-white">session_output:</span>
+          <span className="text-foreground">
+            {sessionUsage ? `${formatNumber(sessionUsage.outputTokens)} tokens` : "0 tokens"}
+          </span>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <span className="w-32 text-white">session_cost:</span>
+          <span className="text-emerald-400">
+            {sessionUsage ? `$${sessionUsage.cost.toFixed(2)}` : "$0.00"}
+          </span>
+        </div>
+
+        <div className="h-px bg-white/5 my-2 w-72" />
+
+        {/* General Util */}
+        <div className="flex items-center gap-3">
+          <span className="w-32 text-white">session_util:</span>
           <span className="text-foreground">
             {stats ? renderAsciiBar(stats.sessionUsedPercent) : "[--------------------] --%"}
           </span>
         </div>
 
         <div className="flex items-center gap-3">
-          <span className="w-24 text-white">weekly_util:</span>
+          <span className="w-32 text-white">weekly_util:</span>
           <span className="text-foreground">
             {stats ? renderAsciiBar(stats.weeklyUsedPercent) : "[--------------------] --%"}
           </span>
@@ -93,20 +125,37 @@ export function StatusPanel() {
           )}
         </div>
 
+        {/* Model breakdown list if present */}
+        {hasModels && stats?.models && (
+          <div className="space-y-2 mt-2 pt-2 border-t border-white/5 w-96">
+            <span className="text-[10px] text-white/40 block uppercase tracking-wider">Model breakdown:</span>
+            {Object.entries(stats.models).map(([model, percent]) => (
+              <div key={model} className="flex items-center gap-3 pl-2">
+                <span className="w-28 text-white/70 truncate">{model.toLowerCase()}:</span>
+                <span className="text-foreground">
+                  {renderAsciiBar(percent)}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        <div className="h-px bg-white/5 my-2 w-72" />
+
         <div className="flex items-center gap-3">
-          <span className="w-24 text-white">reqs_last_24h:</span>
+          <span className="w-32 text-white">reqs_last_24h:</span>
           <span className="text-foreground">{stats?.last24hRequests ?? 0}</span>
           <span className="opacity-50">({stats?.last24hSessions ?? 0} sessions)</span>
         </div>
 
         <div className="flex items-center gap-3">
-          <span className="w-24 text-white">reqs_last_7d:</span>
+          <span className="w-32 text-white">reqs_last_7d:</span>
           <span className="text-foreground">{stats?.last7dRequests ?? 0}</span>
           <span className="opacity-50">({stats?.last7dSessions ?? 0} sessions)</span>
         </div>
 
         <div className="flex items-center gap-3">
-          <span className="w-24 text-white">last_sync:</span>
+          <span className="w-32 text-white">last_sync:</span>
           <span className="text-foreground">{stats ? formatTime(stats.lastUpdated) : "never"}</span>
         </div>
       </div>
